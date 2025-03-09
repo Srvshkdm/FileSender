@@ -1,84 +1,80 @@
-import { NextResponse } from 'next/server'
-import { Redis } from '@upstash/redis'
+import { NextResponse } from 'next/server';
+import { redis } from '@/lib/redis';
 
 interface FileMetadata {
   fileName: string;
   chunks: number;
+  totalSize: number;
+  createdAt: number;
   expiresAt: number;
   downloaded?: boolean;
 }
 
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!
-})
-
 export async function GET(req: Request) {
   try {
-    const { searchParams } = new URL(req.url)
-    const code = searchParams.get('code')
+    const { searchParams } = new URL(req.url);
+    const code = searchParams.get('code');
+    console.log('Download request for code:', code);
 
-    // Get file metadata from Redis
-    const metadata = await redis.get<FileMetadata>(`${code}:meta`)
-    
+    const metadata = await redis.get<FileMetadata>(`${code}:meta`);
+    console.log('Retrieved metadata:', metadata);
+
     if (!metadata) {
+      console.log('Metadata not found for code:', code);
       return NextResponse.json(
         { error: 'File not found or link expired' },
         { status: 404 }
-      )
+      );
     }
 
-    const { fileName, chunks } = metadata
+    const { fileName, chunks } = metadata;
+    console.log(`Reassembling ${chunks} chunks for file: ${fileName}`);
 
-    // Get all chunks sequentially to avoid request size limits
-    const fileChunks = []
+    const fileChunks = [];
     for (let i = 0; i < chunks; i++) {
-      const chunk = await redis.get(`${code}:chunk:${i}`)
+      const key = `${code}:chunk:${i}`;
+      const chunk = await redis.get(key);
+      console.log(`Chunk ${i} retrieved for key ${key}:`, chunk ? 'Success' : 'Failed');
       if (!chunk) {
-        throw new Error(`Missing chunk ${i}`)
+        throw new Error(`Missing chunk ${i}`);
       }
-      fileChunks.push(chunk)
+      fileChunks.push(chunk);
     }
 
-    // Combine chunks
-    const file = fileChunks.join('')
+    const file = fileChunks.join('');
+    console.log('Reassembled file length:', file.length);
 
-    // Mark as downloaded and clean up
     try {
-      // Update metadata to mark as downloaded
-      await redis.set(`${code}:meta`, { ...metadata, downloaded: true }, { 
-        ex: Math.ceil((metadata.expiresAt - Date.now()) / 1000) 
-      })
-
-      // Clean up chunks immediately
+      await redis.set(`${code}:meta`, JSON.stringify({ ...metadata, downloaded: true }), {
+        ex: Math.ceil((metadata.expiresAt - Date.now()) / 1000)
+      });
       for (let i = 0; i < chunks; i++) {
-        await redis.del(`${code}:chunk:${i}`)
+        await redis.del(`${code}:chunk:${i}`);
       }
-
-      // Remove from tracking set
-      await redis.srem('active_files', code)
+      await redis.srem('active_files', code);
+      console.log('Cleanup completed for code:', code);
     } catch (error) {
-      console.error('Cleanup error:', error)
-      // Continue with the response even if cleanup fails
+      console.error('Cleanup error:', error);
     }
 
-    // Ensure we have a valid base64 string
-    const base64Data = file.split(',')[1] || file
+    const base64Data = file.split(',')[1] || file;
+    const buffer = Buffer.from(base64Data, 'base64');
+    console.log('Decoded buffer length:', buffer.length);
 
-    // Create response with the file
-    const response = new NextResponse(Buffer.from(base64Data, 'base64'), {
+    const response = new NextResponse(buffer, {
       headers: {
         'Content-Type': 'application/octet-stream',
         'Content-Disposition': `attachment; filename="${fileName}"`,
+        'Content-Length': buffer.length.toString(),
       },
-    })
+    });
 
-    return response
+    return response;
   } catch (error) {
-    console.error('Download error:', error)
+    console.error('Download error:', error);
     return NextResponse.json(
       { error: 'Failed to download file' },
       { status: 500 }
-    )
+    );
   }
-} 
+}

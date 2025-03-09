@@ -5,8 +5,8 @@ import { QRCodeSVG } from 'qrcode.react';
 import JSZip from 'jszip';
 import { ThemeToggle } from '@/components/theme-toggle';
 
-const MAX_FILE_SIZE = 50*1024 * 1024; // 100MB in bytes
-const MAX_TOTAL_SIZE = 50*1024 * 1024; // 100MB total limit
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 100MB in bytes
+const MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 100MB total limit
 
 function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 Bytes';
@@ -16,7 +16,6 @@ function formatFileSize(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-// Add this CSS class to your label's className
 const fileListStyles = `
   max-height: ${32 * 4}px; // Show 4 files at a time
   overflow-y: auto;
@@ -45,15 +44,12 @@ export default function Home() {
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [uploadedFileInfo, setUploadedFileInfo] = useState<{ name: string; size: string } | null>(null);
 
-  // Add countdown timer effect
   useEffect(() => {
     let timer: NodeJS.Timeout;
-    
     if (uploadedCode && timeLeft > 0) {
       timer = setInterval(() => {
         setTimeLeft((time) => {
           if (time <= 1) {
-            // Clear all upload data when timer expires
             setUploadedCode(null);
             setDownloadUrl(null);
             setUploadedFileInfo(null);
@@ -63,12 +59,7 @@ export default function Home() {
         });
       }, 1000);
     }
-
-    return () => {
-      if (timer) {
-        clearInterval(timer);
-      }
-    };
+    return () => clearInterval(timer);
   }, [uploadedCode, timeLeft]);
 
   const getTotalSize = (fileList: File[]) => {
@@ -82,10 +73,9 @@ export default function Home() {
     if (totalSize > MAX_TOTAL_SIZE) {
       setError(`Total file size exceeds 100MB limit (${formatFileSize(totalSize)})`);
       setFiles([]);
-      e.target.value = ''; // Reset input
+      e.target.value = '';
       return;
     }
-
     setFiles(selectedFiles);
     setError(null);
   };
@@ -101,17 +91,14 @@ export default function Home() {
       let base64Data: string;
       let fileName: string;
 
-      // Only zip if really needed (optimize compression decision)
       const shouldZip = files.length > 1 || 
-        (files[0].size > 1024 * 1024 && // Only zip files over 1MB if they are compressible
+        (files[0].size > 1024 * 1024 && 
           (files[0].type.includes('text/') || 
            files[0].type.includes('image/svg') ||
            files[0].name.match(/\.(js|css|html|txt|md|json|xml|csv|yml|yaml)$/i)));
 
       if (shouldZip) {
         const zip = new JSZip();
-        
-        // Show progress during compression
         let processedFiles = 0;
         
         for (const file of files) {
@@ -122,9 +109,7 @@ export default function Home() {
           
           zip.file(file.name, arrayBuffer, {
             compression: isCompressible ? 'DEFLATE' : 'STORE',
-            compressionOptions: {
-              level: isCompressible ? 6 : 0 // Balanced compression level
-            }
+            compressionOptions: { level: isCompressible ? 6 : 0 }
           });
 
           processedFiles++;
@@ -134,16 +119,12 @@ export default function Home() {
         const zipBlob = await zip.generateAsync({ 
           type: 'blob',
           compression: 'DEFLATE',
-          compressionOptions: {
-            level: 6 // Balanced compression level
-          }
+          compressionOptions: { level: 6 }
         }, (metadata) => {
           setUploadProgress(50 + Math.round(metadata.percent / 2));
         });
 
-        // Only use zip if it actually helps
         if (zipBlob.size > getTotalSize(files) && files.length === 1) {
-          // Use original file if zip is larger
           const reader = new FileReader();
           base64Data = await new Promise((resolve, reject) => {
             reader.onload = () => resolve(reader.result as string);
@@ -161,7 +142,6 @@ export default function Home() {
           fileName = files.length > 1 ? 'files.zip' : files[0].name + '.zip';
         }
       } else {
-        // Single file, no compression needed
         const reader = new FileReader();
         base64Data = await new Promise((resolve, reject) => {
           reader.onload = () => resolve(reader.result as string);
@@ -173,7 +153,9 @@ export default function Home() {
 
       setUploadProgress(75);
 
-      // Get the current domain
+      // Strip data URL prefix
+      const cleanBase64Data = base64Data.split(',')[1] || base64Data;
+
       const protocol = window.location.protocol;
       const domain = process.env.NODE_ENV === 'development' 
         ? window.location.hostname === 'localhost' 
@@ -186,7 +168,7 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          file: base64Data,
+          file: cleanBase64Data,
           fileName
         }),
       });
@@ -201,13 +183,13 @@ export default function Home() {
 
       setUploadedFileInfo({
         name: fileName,
-        size: data.size || formatFileSize(base64Data.length * 1)
+        size: data.size || formatFileSize(cleanBase64Data.length * 0.75) // Approximate
       });
       setUploadedCode(data.code);
       setDownloadUrl(`${baseUrl}/api/download?code=${data.code}`);
       setTimeLeft(data.expiresIn || 120);
       setFiles([]);
-      
+
       if (data.size) {
         console.log(`File uploaded successfully. Final size: ${data.size}`);
       }
@@ -260,7 +242,6 @@ export default function Home() {
     }
   };
 
-  // Add function to format time
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
