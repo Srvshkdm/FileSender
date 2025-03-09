@@ -392,8 +392,8 @@ export default function Home() {
                             {uploadedCode}
                           </p>
                         </div>
-                        <div className="bg-white dark:bg-black p-4 rounded-lg">
-                          <QRCodeSVG value={downloadUrl || ''} size={180} />
+                        <div className="bg-white p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+                          <QRCodeSVG value={downloadUrl || ''} size={180} bgColor="#FFFFFF" fgColor="#000000" />
                         </div>
                       </div>
                       <div className="flex flex-col items-center space-y-2">
