@@ -1,20 +1,25 @@
 import { NextResponse } from 'next/server'
-import { redis } from '@/lib/redis'
+import { Redis } from '@upstash/redis'
+
+interface FileMetadata {
+  fileName: string;
+  chunks: number;
+  expiresAt: number;
+  downloaded?: boolean;
+}
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!
+})
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
     const code = searchParams.get('code')
 
-    if (!code) {
-      return NextResponse.json(
-        { error: 'No code provided' },
-        { status: 400 }
-      )
-    }
-
     // Get file metadata from Redis
-    const metadata = await redis.get(`${code}:meta`)
+    const metadata = await redis.get<FileMetadata>(`${code}:meta`)
     
     if (!metadata) {
       return NextResponse.json(

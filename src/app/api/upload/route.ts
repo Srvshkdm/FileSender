@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server'
-import { redis } from '@/lib/redis'
+import { Redis } from '@upstash/redis'
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!
+})
 import crypto from 'crypto'
 
 const MAX_CHUNK_SIZE = 750 * 1024 // 750KB per chunk to stay safely under Upstash's 1MB limit
@@ -57,7 +62,7 @@ export async function POST(req: Request) {
     await redis.expire('active_files', EXPIRY_TIME)
 
     // Store metadata first
-    await redis.set(`${code}:meta`, metadata, { ex: EXPIRY_TIME })
+    await redis.set(`${code}:meta`, JSON.stringify(metadata), { ex: EXPIRY_TIME })
     
     // Store chunks in separate requests to avoid pipeline size limit
     for (let i = 0; i < chunks.length; i++) {
@@ -67,9 +72,12 @@ export async function POST(req: Request) {
     // Schedule cleanup after expiration
     setTimeout(async () => {
       try {
-        const meta = await redis.get(`${code}:meta`)
-        if (meta && !meta.downloaded) {
-          await cleanupFile(code, chunks.length)
+        const metaStr = await redis.get(`${code}:meta`) as string
+        if (metaStr) {
+          const meta = JSON.parse(metaStr)
+          if (!meta.downloaded) {
+            await cleanupFile(code, chunks.length)
+          }
         }
       } catch (error) {
         console.error('Cleanup error:', error)
@@ -117,4 +125,4 @@ function formatFileSize(bytes: number): string {
   const sizes = ['Bytes', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-} 
+}

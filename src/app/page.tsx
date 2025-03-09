@@ -201,7 +201,7 @@ export default function Home() {
 
       setUploadedFileInfo({
         name: fileName,
-        size: data.size || formatFileSize(base64Data.length * 0.75)
+        size: data.size || formatFileSize(base64Data.length * 1)
       });
       setUploadedCode(data.code);
       setDownloadUrl(`${baseUrl}/api/download?code=${data.code}`);
